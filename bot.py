@@ -1,4 +1,5 @@
 import asyncio
+import os
 import discord
 
 from discord.ext import commands
@@ -9,16 +10,24 @@ from config import (
     PREFIX,
     EMBED_DEFAULT,
     EMBED_WIN,
+    EMBED_LOSS,
 )
 
 from database import Database
 from ltc_watcher import LTCWatcher
 
-from utils import format_points
+from utils import (
+    format_points,
+)
+
+from images import (
+    create_coinflip_image,
+    save_image,
+)
 
 
 # ============================================================
-# THUNDER CASINO BOT
+# THUNDER CASINO
 # ============================================================
 
 intents = discord.Intents.default()
@@ -36,7 +45,19 @@ ltc_watcher = None
 
 
 # ============================================================
-# HELP COMMAND DATA
+# CURRENCY
+# ============================================================
+
+# $0.01 = 2 points
+# $1.00 = 200 points
+
+POINTS_PER_CENT = 2
+POINTS_PER_USD = 200
+USD_PER_POINT = 0.005
+
+
+# ============================================================
+# HELP COMMAND LISTS
 # ============================================================
 
 BALANCE_COMMANDS = [
@@ -44,14 +65,14 @@ BALANCE_COMMANDS = [
     (".steal", "Steals custom emojis from the provided parameters and adds them to this server."),
     (".achievements", "Shows your achievements or another user's achievements."),
     (".address", "Displays basic balances and recent activity for a specified Litecoin address."),
-    (".ai", "Ask BetRush AI a question."),
+    (".ai", "Ask Thunder Casino AI a question."),
     (".alerts", "View and manage your Litecoin price alerts interactively."),
     (".calc", "Perform calculations. Supports +, -, *, /, parentheses, etc."),
     (".calendar", "Shows a monthly calendar with your gambling streak."),
     (".clan", "View, create, or manage your clan and inspect others."),
     (".crypto", "Displays top 6 cryptos with live price, 7-day graph, and stats."),
     (".games", "Shows all commands in the games category."),
-    (".guide", "Learn how to use the bot."),
+    (".guide", "Learn how to use Thunder Casino."),
     (".help", "All commands of the bot."),
     (".image", "Generate an image from a prompt."),
     (".leaderboard", "Show top 10 gamblers."),
@@ -83,7 +104,7 @@ UTILITY_COMMANDS = [
     (".balance", "Check your current points and their equivalent in LTC and USD."),
     (".code", "Claim a promotional code to earn points."),
     (".daily", "Claim your daily free points reward. You can claim it once every 24 hours."),
-    (".deposit", "Deposit cryptocurrency seamlessly into your account."),
+    (".deposit", "Deposit Litecoin seamlessly into your account."),
     (".monthly", "Shows your monthly bonus info."),
     (".rain", "Initiate a rain of points for active users in the channel."),
     (".rainwheel", "Initiate a rain wheel lobby where one lucky winner takes the entire jackpot!"),
@@ -93,8 +114,8 @@ UTILITY_COMMANDS = [
     (".vault", "Access your secure cold storage vault."),
     (".vip", "Check your or another user's VIP progress."),
     (".weekly", "Shows your weekly bonus info."),
-    (".withdraw", "Withdraws cryptocurrency safely from BetRush. Minimum: 20 points."),
-    (".withdrawold", "Withdraws Litecoin to a specified address for BetRush. Minimum: 20 points."),
+    (".withdraw", "Withdraws Litecoin safely from Thunder Casino. Minimum: 20 points."),
+    (".withdrawold", "Withdraws Litecoin to a specified address. Minimum: 20 points."),
     (".withdrawsol", "Withdraws Solana to a specified address. Minimum: 20 points."),
     (".price", "Check the equivalent of points in LTC and USD, or convert a number to different currencies."),
 ]
@@ -103,47 +124,66 @@ UTILITY_COMMANDS = [
 GAME_COMMANDS = [
     (
         ".cf / .coinflip",
-        ".cf <bet amount in points> <Heads / Tails or H / T>\n"
-        "One provably-fair roll decides the result. Winner takes 1.92× the bet."
+        "`.cf <amount> <heads/tails>`\n"
+        "Choose Heads or Tails and bet your points.\n"
+        "One provably-fair roll decides the result.\n"
+        "Winner receives 1.92× the bet."
     ),
+
     (
         ".bj / .blackjack",
-        ".bj <bet amount in points> [21+3 sidebet] [Perfect Pair sidebet]\n"
-        "Winner takes 1.92× the bet."
+        "`.bj <amount> [21+3] [perfect pair]`\n"
+        "Play Blackjack with optional side bets."
     ),
+
     (
         ".mines",
-        ".mines <bet amount in points>\n"
-        "Reveal tiles and cash out before hitting a mine."
+        "`.mines <amount>`\n"
+        "Reveal safe tiles and cash out before hitting a mine."
     ),
+
     (
         ".horse",
-        ".horse <bet amount in points>\n"
-        "Choose Horse 1, 2, 3, or 4 and watch the race."
+        "`.horse <amount>`\n"
+        "Choose one of four horses and watch the race."
     ),
+
     (
         ".limbo",
-        ".limbo <bet amount in points> <target multiplier>\n"
-        "Choose a target multiplier and try to beat it."
+        "`.limbo <amount> <target>`\n"
+        "Set a target multiplier and try to beat it."
     ),
+
     (
         ".bjdice",
-        ".bjdice <bet amount in points>\n"
-        "Roll as close to 21 as possible. Going over 21 loses."
+        "`.bjdice <amount>`\n"
+        "Roll as close to 21 as possible without going over."
     ),
+
     (
         ".ward",
-        ".ward <bet amount in points>\n"
-        "You and the bot roll a die. The higher roll wins."
+        "`.ward <amount>`\n"
+        "You and the bot roll a die. Higher roll wins."
     ),
 ]
 
 
 # ============================================================
-# HELP EMBEDS
+# HELP EMBED
 # ============================================================
 
-def create_main_help():
+async def build_main_help():
+
+    try:
+        total_users = await get_total_users()
+    except Exception:
+        total_users = 0
+
+    total_commands = (
+        len(BALANCE_COMMANDS)
+        + len(UTILITY_COMMANDS)
+        + len(GAME_COMMANDS)
+    )
 
     return discord.Embed(
         title="Help Command - Main Menu",
@@ -151,95 +191,95 @@ def create_main_help():
             "Welcome to **Thunder Casino**, the best Discord "
             "Litecoin Casino Bot.\n\n"
             "💡 New here? Read `.guide`\n\n"
-            "**Rate:** 1 point = 0.005 LTC\n"
-            "**Total Commands:** "
-            f"{len(BALANCE_COMMANDS) + len(UTILITY_COMMANDS) + len(GAME_COMMANDS)}\n"
-            "**Total Users:** "
-            f"{get_total_users_sync()}\n\n"
+            "**Rate:** $0.01 = 2 points\n"
+            f"**Total Commands:** {total_commands}\n"
+            f"**Total Users:** {total_users}\n\n"
             "Bot made by <@1519015243710201927>"
         ),
         color=EMBED_DEFAULT,
     )
 
 
-def create_category_embed(category):
+# ============================================================
+# CATEGORY EMBEDS
+# ============================================================
 
-    if category == "games":
+def build_games_embed():
 
-        embed = discord.Embed(
-            title="Games",
-            description=(
-                "All available casino games.\n\n"
-                "Select another category below."
-            ),
-            color=EMBED_DEFAULT,
+    embed = discord.Embed(
+        title="Games",
+        description=(
+            "All available Thunder Casino games.\n\n"
+            "Choose another category using the menu below."
+        ),
+        color=EMBED_DEFAULT,
+    )
+
+    for command, description in GAME_COMMANDS:
+
+        embed.add_field(
+            name=command,
+            value=description,
+            inline=False,
         )
 
-        for command, description in GAME_COMMANDS:
+    embed.set_footer(
+        text="Thunder Casino • Games"
+    )
 
-            embed.add_field(
-                name=f"**{command}**",
-                value=description,
-                inline=False,
-            )
+    return embed
 
-        embed.set_footer(
-            text="Thunder Casino • Games"
+
+def build_utility_embed():
+
+    embed = discord.Embed(
+        title="Utility",
+        description=(
+            "Utility and account commands.\n\n"
+            "Choose another category using the menu below."
+        ),
+        color=EMBED_DEFAULT,
+    )
+
+    for command, description in UTILITY_COMMANDS:
+
+        embed.add_field(
+            name=command,
+            value=description,
+            inline=False,
         )
 
-        return embed
+    embed.set_footer(
+        text="Thunder Casino • Utility"
+    )
 
-    if category == "utility":
+    return embed
 
-        embed = discord.Embed(
-            title="Utility",
-            description=(
-                "Utility and account commands.\n\n"
-                "Select another category below."
-            ),
-            color=EMBED_DEFAULT,
+
+def build_balance_embed():
+
+    embed = discord.Embed(
+        title="Balance",
+        description=(
+            "Balance, information and miscellaneous commands.\n\n"
+            "Choose another category using the menu below."
+        ),
+        color=EMBED_DEFAULT,
+    )
+
+    for command, description in BALANCE_COMMANDS:
+
+        embed.add_field(
+            name=command,
+            value=description,
+            inline=False,
         )
 
-        for command, description in UTILITY_COMMANDS:
+    embed.set_footer(
+        text="Thunder Casino • Balance"
+    )
 
-            embed.add_field(
-                name=f"**{command}**",
-                value=description,
-                inline=False,
-            )
-
-        embed.set_footer(
-            text="Thunder Casino • Utility"
-        )
-
-        return embed
-
-    if category == "balance":
-
-        embed = discord.Embed(
-            title="Balance",
-            description=(
-                "Casino, information and miscellaneous commands.\n\n"
-                "Select another category below."
-            ),
-            color=EMBED_DEFAULT,
-        )
-
-        for command, description in BALANCE_COMMANDS:
-
-            embed.add_field(
-                name=f"**{command}**",
-                value=description,
-                inline=False,
-            )
-
-        embed.set_footer(
-            text="Thunder Casino • Balance"
-        )
-
-        return embed
-
-    return create_main_help()
+    return embed
 
 
 # ============================================================
@@ -250,38 +290,52 @@ class HelpSelect(discord.ui.Select):
 
     def __init__(self):
 
-        options = [
-            discord.SelectOption(
-                label="Games",
-                value="games",
-                description="View all casino games.",
-            ),
-            discord.SelectOption(
-                label="Utility",
-                value="utility",
-                description="View all utility commands.",
-            ),
-            discord.SelectOption(
-                label="Balance",
-                value="balance",
-                description="View balance and miscellaneous commands.",
-            ),
-        ]
-
         super().__init__(
-            placeholder="Select a category",
+            placeholder="Select a category...",
             min_values=1,
             max_values=1,
-            options=options,
+            options=[
+                discord.SelectOption(
+                    label="Games",
+                    value="games",
+                    description="View all Thunder Casino games.",
+                ),
+                discord.SelectOption(
+                    label="Utility",
+                    value="utility",
+                    description="View all utility commands.",
+                ),
+                discord.SelectOption(
+                    label="Balance",
+                    value="balance",
+                    description="View balance and information commands.",
+                ),
+            ],
         )
 
-    async def callback(self, interaction):
+    async def callback(self, interaction: discord.Interaction):
 
         selected = self.values[0]
 
-        embed = create_category_embed(
-            selected
-        )
+        if selected == "games":
+
+            embed = build_games_embed()
+
+        elif selected == "utility":
+
+            embed = build_utility_embed()
+
+        elif selected == "balance":
+
+            # IMPORTANT:
+            # Explicit Balance handler.
+            # This edits the SAME help message.
+
+            embed = build_balance_embed()
+
+        else:
+
+            embed = await build_main_help()
 
         await interaction.response.edit_message(
             embed=embed,
@@ -301,37 +355,11 @@ class HelpView(discord.ui.View):
             timeout=300
         )
 
+        self.select_menu = HelpSelect()
+
         self.add_item(
-            HelpSelect()
+            self.select_menu
         )
-
-
-# ============================================================
-# USER COUNT
-# ============================================================
-
-def get_total_users_sync():
-
-    # Database is loaded asynchronously.
-    # The real count is updated by the async help command.
-    return "..."
-
-
-async def get_total_users():
-
-    try:
-
-        async with db.pool.acquire() as conn:
-
-            count = await conn.fetchval(
-                "SELECT COUNT(*) FROM users"
-            )
-
-            return count or 0
-
-    except Exception:
-
-        return 0
 
 
 # ============================================================
@@ -343,27 +371,7 @@ async def get_total_users():
 )
 async def help_command(ctx):
 
-    total_users = await get_total_users()
-
-    total_commands = (
-        len(BALANCE_COMMANDS)
-        + len(UTILITY_COMMANDS)
-        + len(GAME_COMMANDS)
-    )
-
-    embed = discord.Embed(
-        title="Help Command - Main Menu",
-        description=(
-            "Welcome to **Thunder Casino**, the best Discord "
-            "Litecoin Casino Bot.\n\n"
-            "💡 New here? Read `.guide`\n\n"
-            "**Rate:** 1 point = 0.005 LTC\n"
-            f"**Total Commands:** {total_commands}\n"
-            f"**Total Users:** {total_users}\n\n"
-            "Bot made by <@1519015243710201927>"
-        ),
-        color=EMBED_DEFAULT,
-    )
+    embed = await build_main_help()
 
     await ctx.send(
         embed=embed,
@@ -372,25 +380,53 @@ async def help_command(ctx):
 
 
 # ============================================================
+# TOTAL USERS
+# ============================================================
+
+async def get_total_users():
+
+    if db.pool is None:
+
+        return 0
+
+    try:
+
+        async with db.pool.acquire() as conn:
+
+            result = await conn.fetchval(
+                "SELECT COUNT(*) FROM users"
+            )
+
+            return result or 0
+
+    except Exception as error:
+
+        print(
+            f"[HELP] User count error: {error}"
+        )
+
+        return 0
+
+
+# ============================================================
 # BALANCE COMMAND
 # ============================================================
 
 @bot.command(
     name="balance",
-    aliases=["bal", "b"],
+    aliases=[
+        "bal",
+        "b",
+    ],
 )
-async def balance(ctx):
+async def balance_command(ctx):
 
     balance = await db.get_balance(
         ctx.author.id
     )
 
-    # Requested wallet display.
-    #
-    # The points system still exists internally.
-    # The wallet message displays USD.
-
-    usd_value = float(balance) * 0.005
+    # 200 points = $1
+    usd_value = float(balance) / POINTS_PER_USD
 
     embed = discord.Embed(
         description=(
@@ -406,6 +442,307 @@ async def balance(ctx):
 
 
 # ============================================================
+# COINFLIP
+# ============================================================
+
+COINFLIP_MULTIPLIER = 1.92
+
+
+def make_coinflip_result():
+
+    # Cryptographically secure random byte.
+    random_byte = os.urandom(1)[0]
+
+    roll = (
+        random_byte / 255
+    ) * 100
+
+    if roll < 50:
+
+        return "heads", roll
+
+    return "tails", roll
+
+
+@bot.command(
+    name="coinflip",
+    aliases=[
+        "cf",
+    ],
+)
+async def coinflip_command(
+    ctx,
+    amount: int = None,
+    choice: str = None,
+):
+
+    # --------------------------------------------------------
+    # COINFLIP INSTRUCTIONS
+    # --------------------------------------------------------
+
+    if amount is None:
+
+        embed = discord.Embed(
+            title="How to play Coinflip",
+            description=(
+                "`.cf <amount> <color>` — pick **Tails** "
+                "or **Heads** and bet.\n\n"
+                "One provably-fair roll (0–100) decides it:\n"
+                "**Heads < 50**\n"
+                "**Tails ≥ 50**\n\n"
+                "Winner takes **1.92× the bet**."
+            ),
+            color=EMBED_DEFAULT,
+        )
+
+        await ctx.send(
+            embed=embed
+        )
+
+        return
+
+    # --------------------------------------------------------
+    # BET VALIDATION
+    # --------------------------------------------------------
+
+    if amount <= 0:
+
+        await ctx.send(
+            "❌ Your bet must be greater than 0 points."
+        )
+
+        return
+
+    # --------------------------------------------------------
+    # CHOICE
+    # --------------------------------------------------------
+
+    if choice is None:
+
+        # If no side was supplied, randomly choose one.
+        random_side = os.urandom(1)[0] % 2
+
+        if random_side == 0:
+
+            player_choice = "heads"
+
+        else:
+
+            player_choice = "tails"
+
+    else:
+
+        choice = choice.lower()
+
+        if choice in (
+            "h",
+            "head",
+            "heads",
+        ):
+
+            player_choice = "heads"
+
+        elif choice in (
+            "t",
+            "tail",
+            "tails",
+        ):
+
+            player_choice = "tails"
+
+        else:
+
+            await ctx.send(
+                "❌ Choose **Heads** or **Tails**.\n"
+                "Example: `.cf 100 h`"
+            )
+
+            return
+
+    # --------------------------------------------------------
+    # BALANCE
+    # --------------------------------------------------------
+
+    balance = await db.get_balance(
+        ctx.author.id
+    )
+
+    if float(balance) < amount:
+
+        await ctx.send(
+            f"❌ You don't have enough points.\n"
+            f"Balance: **{format_points(balance)} points**"
+        )
+
+        return
+
+    # --------------------------------------------------------
+    # RESULT
+    # --------------------------------------------------------
+
+    result, roll = make_coinflip_result()
+
+    won = (
+        player_choice == result
+    )
+
+    # --------------------------------------------------------
+    # REMOVE BET
+    # --------------------------------------------------------
+
+    try:
+
+        await db.remove_balance(
+            ctx.author.id,
+            amount,
+        )
+
+    except AttributeError:
+
+        # Compatibility fallback if the database uses
+        # update_balance instead of remove_balance.
+
+        await db.add_balance(
+            ctx.author.id,
+            -amount,
+        )
+
+    # --------------------------------------------------------
+    # PAYOUT
+    # --------------------------------------------------------
+
+    payout = 0
+
+    if won:
+
+        payout = round(
+            amount * COINFLIP_MULTIPLIER
+        )
+
+        await db.add_balance(
+            ctx.author.id,
+            payout,
+        )
+
+        result_message = (
+            f"**You won — {format_points(payout)} points**"
+        )
+
+        embed_color = EMBED_WIN
+
+    else:
+
+        result_message = (
+            "**Bot wins — better luck next flip.**"
+        )
+
+        embed_color = EMBED_LOSS
+
+    # --------------------------------------------------------
+    # IMAGE
+    # --------------------------------------------------------
+
+    image = create_coinflip_image(
+        result
+    )
+
+    filename = (
+        f"coinflip_{ctx.author.id}_{ctx.message.id}.png"
+    )
+
+    image_path = save_image(
+        image,
+        filename
+    )
+
+    file = discord.File(
+        image_path,
+        filename="coinflip.png",
+    )
+
+    # --------------------------------------------------------
+    # DISPLAY VALUES
+    # --------------------------------------------------------
+
+    player_display = (
+        "Heads"
+        if player_choice == "heads"
+        else "Tails"
+    )
+
+    bot_display = (
+        "Tails"
+        if player_choice == "heads"
+        else "Heads"
+    )
+
+    result_display = (
+        "Heads"
+        if result == "heads"
+        else "Tails"
+    )
+
+    # --------------------------------------------------------
+    # RESULT EMBED
+    # --------------------------------------------------------
+
+    embed = discord.Embed(
+        title="Coinflip",
+        description=(
+            f"**Bet:** {format_points(amount)} points\n\n"
+            f"**{ctx.author.display_name}:** {player_display}\n"
+            f"**Bot:** {bot_display}\n\n"
+            f"{result_message}"
+        ),
+        color=embed_color,
+    )
+
+    embed.set_image(
+        url="attachment://coinflip.png"
+    )
+
+    embed.add_field(
+        name="Result",
+        value=(
+            f"**{result_display}**\n"
+            f"Roll: **{roll:.2f}**"
+        ),
+        inline=False,
+    )
+
+    embed.add_field(
+        name="Provably Fair",
+        value=(
+            "This game uses a fresh random result for every flip."
+        ),
+        inline=False,
+    )
+
+    embed.set_footer(
+        text="Thunder Casino • Coinflip"
+    )
+
+    await ctx.send(
+        embed=embed,
+        file=file,
+    )
+
+    # --------------------------------------------------------
+    # DELETE GENERATED IMAGE
+    # --------------------------------------------------------
+
+    try:
+
+        os.remove(
+            image_path
+        )
+
+    except Exception:
+
+        pass
+
+
+# ============================================================
 # ADD BALANCE
 # ============================================================
 
@@ -413,7 +750,7 @@ async def balance(ctx):
     name="add"
 )
 @commands.is_owner()
-async def add_balance(
+async def add_balance_command(
     ctx,
     member: discord.Member,
     amount: float,
@@ -447,7 +784,9 @@ async def add_balance(
 
     embed.add_field(
         name="New Balance",
-        value=f"**{format_points(new_balance)} points**",
+        value=(
+            f"**{format_points(new_balance)} points**"
+        ),
         inline=False,
     )
 
@@ -457,7 +796,7 @@ async def add_balance(
 
 
 # ============================================================
-# BOT READY
+# READY
 # ============================================================
 
 @bot.event
@@ -529,6 +868,7 @@ async def on_command_error(
         error,
         commands.CommandNotFound
     ):
+
         return
 
     if isinstance(
@@ -548,7 +888,7 @@ async def on_command_error(
     ):
 
         await ctx.send(
-            "❌ Invalid argument. Please check the command format."
+            "❌ Invalid argument. Check the command format."
         )
 
         return
@@ -576,9 +916,8 @@ async def on_command_error(
 if not DISCORD_TOKEN:
 
     raise RuntimeError(
-        "DISCORD_TOKEN is missing from .env"
+        "DISCORD_TOKEN is missing."
     )
-
 
 bot.run(
     DISCORD_TOKEN

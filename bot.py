@@ -10,7 +10,7 @@ from config import (
     EMBED_DEFAULT,
     EMBED_WIN,
     EMBED_LOSS,
-    EMBED_NEUTRAL
+    EMBED_NEUTRAL,
 )
 
 from database import Database
@@ -18,84 +18,452 @@ from ltc_watcher import LTCWatcher
 
 from utils import (
     format_points,
-    points_to_usd
+    points_to_usd,
 )
 
 
 # ============================================================
-# BOT
+# THUNDER CASINO
 # ============================================================
 
 intents = discord.Intents.default()
-
 intents.message_content = True
 
 bot = commands.Bot(
     command_prefix=PREFIX,
     intents=intents,
-    help_command=None
+    help_command=None,
 )
 
-
-# ============================================================
-# DATABASE
-# ============================================================
-
 db = Database(DATABASE_URL)
-
 ltc_watcher = None
 
 
 # ============================================================
-# READY
+# HELP COMMAND DATA
 # ============================================================
 
-@bot.event
-async def on_ready():
+# ------------------------------------------------------------
+# BALANCE CATEGORY
+# ------------------------------------------------------------
 
-    global ltc_watcher
+BALANCE_COMMANDS = [
+    (
+        ".giveaway",
+        "Manage and create server giveaways."
+    ),
+    (
+        ".steal",
+        "Steals custom emojis from the provided parameters and adds them to this server."
+    ),
+    (
+        ".achievements",
+        "Shows your achievements or another user's achievements."
+    ),
+    (
+        ".address",
+        "Displays basic balances and recent activity for a specified Litecoin address."
+    ),
+    (
+        ".ai",
+        "Ask BetRush AI a question."
+    ),
+    (
+        ".alerts",
+        "View and manage your Litecoin price alerts interactively."
+    ),
+    (
+        ".calc",
+        "Perform calculations. Supports +, -, *, /, parentheses, etc."
+    ),
+    (
+        ".calendar",
+        "Shows a monthly calendar with your gambling streak."
+    ),
+    (
+        ".clan",
+        "View, create, or manage your clan and inspect others."
+    ),
+    (
+        ".crypto",
+        "Displays top 6 cryptos with live price, 7-day graph, and stats."
+    ),
+    (
+        ".games",
+        "Shows all commands in the games category."
+    ),
+    (
+        ".guide",
+        "Learn how to use the bot."
+    ),
+    (
+        ".help",
+        "All commands of the bot."
+    ),
+    (
+        ".image",
+        "Generate an image from a prompt."
+    ),
+    (
+        ".leaderboard",
+        "Show top 10 gamblers."
+    ),
+    (
+        ".litecoin",
+        "View Litecoin/USDT chart for various time ranges."
+    ),
+    (
+        ".meme",
+        "Reply to a message to meme it into an image."
+    ),
+    (
+        ".multiplayer",
+        "View all available multiplayer games."
+    ),
+    (
+        ".payment",
+        "Check a payment order."
+    ),
+    (
+        ".ping",
+        "Responds with a Pong! message and system health metrics."
+    ),
+    (
+        ".poll",
+        "Create a real-time Yes/No poll."
+    ),
+    (
+        ".privacy",
+        "Toggle your account privacy settings."
+    ),
+    (
+        ".provablyfair",
+        "Check game fairness or verify a game's outcome."
+    ),
+    (
+        ".quote",
+        "Quote a message as an image."
+    ),
+    (
+        ".race",
+        "View the week wager race leaderboard."
+    ),
+    (
+        ".rank",
+        "Displays a user's gambling rank and progress. Allows claiming eligible rank roles and one-time rewards."
+    ),
+    (
+        ".ranks",
+        "View all the ranks that exist along with their reward."
+    ),
+    (
+        ".report",
+        "Report a message by replying to it or providing its ID/link."
+    ),
+    (
+        ".season",
+        "View the dynamic clan season progress and leaderboard."
+    ),
+    (
+        ".seed",
+        "Change your provably fair client seed."
+    ),
+    (
+        ".sms",
+        "Purchase temporary phone numbers for SMS verification."
+    ),
+    (
+        ".specialrace",
+        "Displays the Special Race Leaderboard."
+    ),
+    (
+        ".stats",
+        "View your stats or other user stats."
+    ),
+    (
+        ".thread",
+        "Manage private threads and members."
+    ),
+    (
+        ".worldtime",
+        "Shows the current time in major parts of the world."
+    ),
+]
 
-    print("=" * 50)
 
-    print(
-        f"Thunder Casino online as {bot.user}"
+# ------------------------------------------------------------
+# UTILITY CATEGORY
+# ------------------------------------------------------------
+
+UTILITY_COMMANDS = [
+    (
+        ".affiliates",
+        "View your affiliate status or join using someone's code."
+    ),
+    (
+        ".balance",
+        "Check your current points and their equivalent in LTC and USD."
+    ),
+    (
+        ".code",
+        "Claim a promotional code to earn points."
+    ),
+    (
+        ".daily",
+        "Claim your daily free points reward. You can claim it once every 24 hours."
+    ),
+    (
+        ".deposit",
+        "Deposit cryptocurrency seamlessly into your account."
+    ),
+    (
+        ".monthly",
+        "Shows your monthly bonus info."
+    ),
+    (
+        ".rain",
+        "Initiate a rain of points for active users in the channel."
+    ),
+    (
+        ".rainwheel",
+        "Initiate a rain wheel lobby where one lucky winner takes the entire jackpot!"
+    ),
+    (
+        ".rakeback",
+        "Shows your rakeback info."
+    ),
+    (
+        ".splitorsteal",
+        "Initiate a split or steal lobby where two random users face off for the pot!"
+    ),
+    (
+        ".tip",
+        "Tip another user an amount of points."
+    ),
+    (
+        ".vault",
+        "Access your secure cold storage vault."
+    ),
+    (
+        ".vip",
+        "Check your or another user's VIP progress."
+    ),
+    (
+        ".weekly",
+        "Shows your weekly bonus info."
+    ),
+    (
+        ".withdraw",
+        "Withdraws cryptocurrency safely from BetRush. Minimum: 20 points."
+    ),
+    (
+        ".withdrawold",
+        "Withdraws Litecoin to a specified address for BetRush. Minimum: 20 points."
+    ),
+    (
+        ".withdrawsol",
+        "Withdraws Solana to a specified address. Minimum: 20 points."
+    ),
+    (
+        ".price",
+        "Check the equivalent of points in LTC and USD, or convert a number to different currencies."
+    ),
+]
+
+
+# ------------------------------------------------------------
+# GAMES CATEGORY
+# ------------------------------------------------------------
+
+GAME_COMMANDS = [
+    (
+        ".cf / .coinflip",
+        ".cf <bet amount in points> <Heads / Tails or H / T>\n"
+        "If no amount is provided, show the Coinflip instructions."
+    ),
+    (
+        ".bj / .blackjack",
+        ".bj <bet amount in points> [21+3 sidebet] [Perfect Pair sidebet]\n"
+        "Winner takes 1.92× the bet."
+    ),
+    (
+        ".mines",
+        ".mines <bet amount in points>\n"
+        "Reveal tiles and cash out before hitting a mine."
+    ),
+    (
+        ".horse",
+        ".horse <bet amount in points>\n"
+        "Choose Horse 1, 2, 3, or 4 and watch the race."
+    ),
+    (
+        ".limbo",
+        ".limbo <bet amount in points> <target multiplier>\n"
+        "Choose a target multiplier and try to beat it."
+    ),
+    (
+        ".bjdice",
+        ".bjdice <bet amount in points>\n"
+        "Roll as close to 21 as possible. Going over 21 loses."
+    ),
+    (
+        ".ward",
+        ".ward <bet amount in points>\n"
+        "You and the bot roll a die. The higher roll wins."
+    ),
+]
+
+
+# ============================================================
+# HELP EMBED BUILDERS
+# ============================================================
+
+def create_main_help_embed():
+
+    embed = discord.Embed(
+        title="<:rushmminfo:1539662071472586842> Help Command - Main Menu",
+        description=(
+            "Welcome to **Thunder Casino**, the best Discord "
+            "Litecoin Casino Bot.\n\n"
+            "💡 New here? Read `.guide`\n\n"
+            "**Rate:** 1 point = 0.005 LTC\n\n"
+            "**Total Commands:** Loading...\n"
+            "**Total Users:** Loading...\n\n"
+            "Bot made by <@1519015243710201927>"
+        ),
+        color=EMBED_DEFAULT,
     )
 
-    print(
-        f"Prefix: {PREFIX}"
-    )
+    return embed
 
-    print("=" * 50)
 
-    # --------------------------------------------------------
-    # Database
-    # --------------------------------------------------------
+def create_category_embed(category):
 
-    if db.pool is None:
+    if category == "games":
 
-        await db.connect()
-
-        print(
-            "[DATABASE] PostgreSQL connected."
+        embed = discord.Embed(
+            title="<:rushmminfo:1539662071472586842> Games",
+            description=(
+                "All available casino games are listed below.\n"
+                "Select another category from the menu below."
+            ),
+            color=EMBED_DEFAULT,
         )
 
-    # --------------------------------------------------------
-    # LTC watcher
-    # --------------------------------------------------------
+        for command, description in GAME_COMMANDS:
 
-    if ltc_watcher is None:
+            embed.add_field(
+                name=f"**{command}**",
+                value=description,
+                inline=False,
+            )
 
-        ltc_watcher = LTCWatcher(
-            bot,
-            db
+        embed.set_footer(
+            text="Thunder Casino • Games"
         )
 
-        asyncio.create_task(
-            ltc_watcher.start()
+        return embed
+
+    if category == "utility":
+
+        embed = discord.Embed(
+            title="<:rushmminfo:1539662071472586842> Utility",
+            description=(
+                "Utility and account commands.\n"
+                "Select another category from the menu below."
+            ),
+            color=EMBED_DEFAULT,
         )
 
-        print(
-            "[LTC] Watcher task started."
+        for command, description in UTILITY_COMMANDS:
+
+            embed.add_field(
+                name=f"**{command}**",
+                value=description,
+                inline=False,
+            )
+
+        embed.set_footer(
+            text="Thunder Casino • Utility"
+        )
+
+        return embed
+
+    if category == "balance":
+
+        embed = discord.Embed(
+            title="<:rushmminfo:1539662071472586842> Balance",
+            description=(
+                "Account, casino, and miscellaneous commands.\n"
+                "Select another category from the menu below."
+            ),
+            color=EMBED_DEFAULT,
+        )
+
+        for command, description in BALANCE_COMMANDS:
+
+            embed.add_field(
+                name=f"**{command}**",
+                value=description,
+                inline=False,
+            )
+
+        embed.set_footer(
+            text="Thunder Casino • Balance"
+        )
+
+        return embed
+
+    return create_main_help_embed()
+
+
+# ============================================================
+# HELP SELECT MENU
+# ============================================================
+
+class HelpSelect(discord.ui.Select):
+
+    def __init__(self):
+
+        options = [
+            discord.SelectOption(
+                label="Games",
+                value="games",
+                description="View all casino games.",
+            ),
+            discord.SelectOption(
+                label="Utility",
+                value="utility",
+                description="View utility commands.",
+            ),
+            discord.SelectOption(
+                label="Balance",
+                value="balance",
+                description="View account and balance commands.",
+            ),
+        ]
+
+        super().__init__(
+            placeholder="Select a category...",
+            min_values=1,
+            max_values=1,
+            options=options,
+        )
+
+    async def callback(
+        self,
+        interaction: discord.Interaction
+    ):
+
+        category = self.values[0]
+
+        embed = create_category_embed(
+            category
+        )
+
+        await interaction.response.edit_message(
+            embed=embed,
+            view=self.view,
         )
 
 
@@ -111,249 +479,46 @@ class HelpView(discord.ui.View):
             timeout=300
         )
 
-        self.current_menu = "balance"
-
-    # --------------------------------------------------------
-    # BALANCE
-    # --------------------------------------------------------
-
-    @discord.ui.button(
-        label="Balance",
-        emoji="💰",
-        style=discord.ButtonStyle.primary
-    )
-    async def balance_button(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button
-    ):
-
-        self.current_menu = "balance"
-
-        embed = create_balance_help()
-
-        await interaction.response.edit_message(
-            embed=embed,
-            view=self
-        )
-
-    # --------------------------------------------------------
-    # GAMES
-    # --------------------------------------------------------
-
-    @discord.ui.button(
-        label="Games",
-        emoji="🎮",
-        style=discord.ButtonStyle.secondary
-    )
-    async def games_button(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button
-    ):
-
-        self.current_menu = "games"
-
-        embed = create_games_help()
-
-        await interaction.response.edit_message(
-            embed=embed,
-            view=self
-        )
-
-    # --------------------------------------------------------
-    # UTILITY
-    # --------------------------------------------------------
-
-    @discord.ui.button(
-        label="Utility",
-        emoji="🛠️",
-        style=discord.ButtonStyle.secondary
-    )
-    async def utility_button(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button
-    ):
-
-        self.current_menu = "utility"
-
-        embed = create_utility_help()
-
-        await interaction.response.edit_message(
-            embed=embed,
-            view=self
+        self.add_item(
+            HelpSelect()
         )
 
 
 # ============================================================
-# HELP EMBEDS
+# GET TOTAL USERS
 # ============================================================
 
-def create_balance_help():
+async def get_total_users():
 
-    embed = discord.Embed(
-        title="💰 Thunder Casino",
-        description=(
-            "Welcome to **Thunder Casino**.\n\n"
-            "Manage your balance and casino wallet "
-            "using the commands below."
-        ),
-        color=EMBED_DEFAULT
+    try:
+
+        async with db.pool.acquire() as conn:
+
+            result = await conn.fetchval(
+                "SELECT COUNT(*) FROM users"
+            )
+
+            return result or 0
+
+    except Exception:
+
+        return 0
+
+
+# ============================================================
+# GET TOTAL COMMANDS
+# ============================================================
+
+def get_total_commands():
+
+    # The help menu currently lists all planned commands,
+    # regardless of whether each command has been implemented.
+
+    return (
+        len(BALANCE_COMMANDS)
+        + len(UTILITY_COMMANDS)
+        + len(GAME_COMMANDS)
     )
-
-    embed.add_field(
-        name="💰 Balance",
-        value=(
-            "` .balance `\n"
-            "` .bal `\n\n"
-            "View your current points balance."
-        ),
-        inline=False
-    )
-
-    embed.add_field(
-        name="💳 Deposit",
-        value=(
-            "` .deposit `\n\n"
-            "Generate your personal Litecoin "
-            "deposit address."
-        ),
-        inline=False
-    )
-
-    embed.add_field(
-        name="💸 Withdraw",
-        value=(
-            "` .withdraw <amount> <address> `"
-        ),
-        inline=False
-    )
-
-    embed.set_footer(
-        text="Thunder Casino • .help"
-    )
-
-    return embed
-
-
-def create_games_help():
-
-    embed = discord.Embed(
-        title="🎮 Thunder Casino — Games",
-        color=EMBED_DEFAULT
-    )
-
-    embed.add_field(
-        name="🪙 Coinflip",
-        value=(
-            "**`.cf <amount> <heads/tails>`**\n"
-            "Example: `.cf 100 h`\n\n"
-            "One provably-fair roll decides the result.\n"
-            "Winner receives **1.92×** the bet."
-        ),
-        inline=False
-    )
-
-    embed.add_field(
-        name="🃏 Blackjack",
-        value=(
-            "**`.bj <amount>`**\n"
-            "Optional side bets:\n"
-            "`21+3` • `Perfect Pair`"
-        ),
-        inline=False
-    )
-
-    embed.add_field(
-        name="💣 Mines",
-        value=(
-            "**`.mines <amount>`**\n"
-            "Reveal tiles and cash out before hitting a mine."
-        ),
-        inline=False
-    )
-
-    embed.add_field(
-        name="🐎 Horse",
-        value=(
-            "**`.horse <amount>`**\n"
-            "Choose Horse 1–4 and watch the race."
-        ),
-        inline=False
-    )
-
-    embed.add_field(
-        name="📈 Limbo",
-        value=(
-            "**`.limbo <amount> <target>`**\n"
-            "Choose your target multiplier."
-        ),
-        inline=False
-    )
-
-    embed.add_field(
-        name="🎲 BJ Dice",
-        value=(
-            "**`.bjdice <amount>`**\n"
-            "Roll as close to 21 as possible."
-        ),
-        inline=False
-    )
-
-    embed.add_field(
-        name="🎲 Ward",
-        value=(
-            "**`.ward <amount>`**\n"
-            "You and the bot roll a die."
-        ),
-        inline=False
-    )
-
-    return embed
-
-
-def create_utility_help():
-
-    embed = discord.Embed(
-        title="🛠️ Thunder Casino — Utility",
-        color=EMBED_DEFAULT
-    )
-
-    embed.add_field(
-        name="🏆 Leaderboard",
-        value=(
-            "**`.lb`** / **`.leaderboard`**\n"
-            "View the top wagerers."
-        ),
-        inline=False
-    )
-
-    embed.add_field(
-        name="📊 Stats",
-        value=(
-            "**`.stats`**\n"
-            "View your casino statistics."
-        ),
-        inline=False
-    )
-
-    embed.add_field(
-        name="🏦 Deposit History",
-        value=(
-            "**`.dephistory`**\n"
-            "View your deposit history."
-        ),
-        inline=False
-    )
-
-    embed.add_field(
-        name="❓ Help",
-        value="**`.help`**",
-        inline=False
-    )
-
-    return embed
 
 
 # ============================================================
@@ -365,7 +530,20 @@ def create_utility_help():
 )
 async def help_command(ctx):
 
-    embed = create_balance_help()
+    embed = create_main_help_embed()
+
+    total_users = await get_total_users()
+    total_commands = get_total_commands()
+
+    embed.description = (
+        "Welcome to **Thunder Casino**, the best Discord "
+        "Litecoin Casino Bot.\n\n"
+        "💡 New here? Read `.guide`\n\n"
+        "**Rate:** 1 point = 0.005 LTC\n\n"
+        f"**Total Commands:** {total_commands}\n"
+        f"**Total Users:** {total_users}\n\n"
+        "Bot made by <@1519015243710201927>"
+    )
 
     await ctx.send(
         embed=embed,
@@ -374,12 +552,15 @@ async def help_command(ctx):
 
 
 # ============================================================
-# BALANCE
+# BALANCE COMMAND
 # ============================================================
 
 @bot.command(
     name="balance",
-    aliases=["bal", "b"]
+    aliases=[
+        "bal",
+        "b",
+    ],
 )
 async def balance(ctx):
 
@@ -387,20 +568,29 @@ async def balance(ctx):
         ctx.author.id
     )
 
-    usd = points_to_usd(balance)
+    usd = points_to_usd(
+        balance
+    )
 
     embed = discord.Embed(
         title=f"💰 {ctx.author.display_name}'s Wallet",
-        color=EMBED_DEFAULT
+        color=EMBED_DEFAULT,
     )
 
     embed.add_field(
-        name="Balance",
+        name="Points",
         value=(
-            f"**{format_points(balance)} points**\n"
-            f"≈ **${usd:.2f}**"
+            f"**{format_points(balance)} points**"
         ),
-        inline=False
+        inline=False,
+    )
+
+    embed.add_field(
+        name="USD Value",
+        value=(
+            f"**${usd:.2f}**"
+        ),
+        inline=False,
     )
 
     await ctx.send(
@@ -419,7 +609,7 @@ async def balance(ctx):
 async def add_balance(
     ctx,
     member: discord.Member,
-    amount: float
+    amount: float,
 ):
 
     if amount <= 0:
@@ -432,7 +622,7 @@ async def add_balance(
 
     await db.add_balance(
         member.id,
-        amount
+        amount,
     )
 
     new_balance = await db.get_balance(
@@ -445,14 +635,15 @@ async def add_balance(
             f"{member.mention} received "
             f"**{format_points(amount)} points**."
         ),
-        color=EMBED_WIN
+        color=EMBED_WIN,
     )
 
     embed.add_field(
         name="New Balance",
         value=(
             f"**{format_points(new_balance)} points**"
-        )
+        ),
+        inline=False,
     )
 
     await ctx.send(
@@ -461,7 +652,120 @@ async def add_balance(
 
 
 # ============================================================
-# RUN
+# READY
+# ============================================================
+
+@bot.event
+async def on_ready():
+
+    global ltc_watcher
+
+    print("=" * 60)
+    print("THUNDER CASINO")
+    print("=" * 60)
+
+    print(
+        f"Logged in as: {bot.user}"
+    )
+
+    print(
+        f"Bot ID: {bot.user.id}"
+    )
+
+    print(
+        f"Prefix: {PREFIX}"
+    )
+
+    # --------------------------------------------------------
+    # DATABASE
+    # --------------------------------------------------------
+
+    if db.pool is None:
+
+        await db.connect()
+
+        print(
+            "[DATABASE] PostgreSQL connected."
+        )
+
+    # --------------------------------------------------------
+    # LTC WATCHER
+    # --------------------------------------------------------
+
+    if ltc_watcher is None:
+
+        ltc_watcher = LTCWatcher(
+            bot,
+            db,
+        )
+
+        asyncio.create_task(
+            ltc_watcher.start()
+        )
+
+        print(
+            "[LTC] Watcher started."
+        )
+
+    print("=" * 60)
+
+
+# ============================================================
+# ERROR HANDLER
+# ============================================================
+
+@bot.event
+async def on_command_error(
+    ctx,
+    error,
+):
+
+    if isinstance(
+        error,
+        commands.CommandNotFound
+    ):
+        return
+
+    if isinstance(
+        error,
+        commands.MissingRequiredArgument
+    ):
+
+        await ctx.send(
+            f"❌ Missing argument: `{error.param.name}`"
+        )
+
+        return
+
+    if isinstance(
+        error,
+        commands.BadArgument
+    ):
+
+        await ctx.send(
+            "❌ Invalid argument. Please check the command format."
+        )
+
+        return
+
+    if isinstance(
+        error,
+        commands.NotOwner
+    ):
+
+        await ctx.send(
+            "❌ You don't have permission to use this command."
+        )
+
+        return
+
+    print(
+        f"[COMMAND ERROR] {ctx.command}: {error}"
+    )
+
+
+# ============================================================
+# START BOT
 # ============================================================
 
 if not DISCORD_TOKEN:

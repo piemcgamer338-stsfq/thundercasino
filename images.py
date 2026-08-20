@@ -8,52 +8,11 @@ from config import CARD_FOLDER
 # CARD SYSTEM
 # ============================================================
 
-
-def card_path(card):
-    """
-    Convert:
-
-        queen_of_hearts
-
-    into:
-
-        cards/queen_of_hearts.png
-    """
-
-    return os.path.join(
-        CARD_FOLDER,
-        f"{card}.png"
-    )
-
-
-def load_card(card):
-    """
-    Load a card PNG.
-
-    Example:
-
-        load_card("queen_of_hearts")
-    """
-
-    path = card_path(card)
-
-    if not os.path.exists(path):
-        raise FileNotFoundError(
-            f"Missing card image: {path}"
-        )
-
-    return Image.open(path).convert("RGBA")
-
-
-# ============================================================
-# CARD NAMES
-# ============================================================
-
 SUITS = [
     "hearts",
     "diamonds",
     "clubs",
-    "spades"
+    "spades",
 ]
 
 RANKS = [
@@ -69,29 +28,150 @@ RANKS = [
     "10",
     "jack",
     "queen",
-    "king"
+    "king",
 ]
+
+
+def card_path(card):
+    return os.path.join(
+        CARD_FOLDER,
+        f"{card}.png"
+    )
+
+
+def load_card(card):
+    path = card_path(card)
+
+    if not os.path.exists(path):
+        raise FileNotFoundError(
+            f"Missing card image: {path}"
+        )
+
+    return Image.open(path).convert("RGBA")
 
 
 def create_deck():
 
-    deck = []
+    return [
+        f"{rank}_of_{suit}"
+        for suit in SUITS
+        for rank in RANKS
+    ]
 
-    for suit in SUITS:
 
-        for rank in RANKS:
+# ============================================================
+# COINFLIP IMAGE
+# ============================================================
 
-            deck.append(
-                f"{rank}_of_{suit}"
-            )
+def create_coinflip_image(result):
+    """
+    Creates a simple Thunder Casino coinflip image.
 
-    return deck
+    result must be:
+        heads
+        tails
+    """
+
+    width = 1200
+    height = 500
+
+    # Purple casino-style background
+    image = Image.new(
+        "RGB",
+        (width, height),
+        (40, 25, 60)
+    )
+
+    draw = ImageDraw.Draw(image)
+
+    # Try a common system font.
+    # If unavailable Pillow uses its default font.
+    try:
+        title_font = ImageFont.truetype(
+            "arial.ttf",
+            64
+        )
+
+        result_font = ImageFont.truetype(
+            "arial.ttf",
+            100
+        )
+
+    except Exception:
+
+        title_font = ImageFont.load_default()
+        result_font = ImageFont.load_default()
+
+    # --------------------------------------------------------
+    # Title
+    # --------------------------------------------------------
+
+    draw.text(
+        (width // 2, 60),
+        "THUNDER CASINO",
+        fill="white",
+        anchor="mm",
+        font=title_font
+    )
+
+    # --------------------------------------------------------
+    # Coin
+    # --------------------------------------------------------
+
+    coin_x = width // 2
+    coin_y = height // 2 + 20
+
+    radius = 150
+
+    draw.ellipse(
+        (
+            coin_x - radius,
+            coin_y - radius,
+            coin_x + radius,
+            coin_y + radius,
+        ),
+        fill=(150, 95, 220),
+        outline=(220, 180, 255),
+        width=8,
+    )
+
+    # --------------------------------------------------------
+    # Coin result
+    # --------------------------------------------------------
+
+    result_text = result.upper()
+
+    draw.text(
+        (coin_x, coin_y),
+        result_text,
+        fill="white",
+        anchor="mm",
+        font=result_font
+    )
+
+    return image
+
+
+def save_image(image, filename):
+
+    os.makedirs(
+        "generated",
+        exist_ok=True
+    )
+
+    path = os.path.join(
+        "generated",
+        filename
+    )
+
+    image.save(path)
+
+    return path
 
 
 # ============================================================
 # BLACKJACK IMAGE
 # ============================================================
-
 
 def create_blackjack_image(
     player_cards,
@@ -99,17 +179,13 @@ def create_blackjack_image(
     dealer_hidden=True
 ):
 
-    cards = []
-
-    # --------------------------------------------------------
-    # Dealer cards
-    # --------------------------------------------------------
+    dealer_images = []
 
     for index, card in enumerate(dealer_cards):
 
         if index == 0 and dealer_hidden:
 
-            cards.append(
+            dealer_images.append(
                 Image.new(
                     "RGBA",
                     (250, 350),
@@ -119,21 +195,23 @@ def create_blackjack_image(
 
         else:
 
-            cards.append(
+            dealer_images.append(
                 load_card(card)
             )
-
-    dealer_width = sum(
-        image.width for image in cards
-    )
 
     player_images = [
         load_card(card)
         for card in player_cards
     ]
 
+    dealer_width = sum(
+        image.width
+        for image in dealer_images
+    )
+
     player_width = sum(
-        image.width for image in player_images
+        image.width
+        for image in player_images
     )
 
     width = max(
@@ -152,10 +230,6 @@ def create_blackjack_image(
 
     draw = ImageDraw.Draw(canvas)
 
-    # --------------------------------------------------------
-    # Dealer
-    # --------------------------------------------------------
-
     draw.text(
         (width // 2, 40),
         "DEALER",
@@ -165,7 +239,7 @@ def create_blackjack_image(
 
     x = (width - dealer_width) // 2
 
-    for image in cards:
+    for image in dealer_images:
 
         canvas.paste(
             image,
@@ -174,10 +248,6 @@ def create_blackjack_image(
         )
 
         x += image.width
-
-    # --------------------------------------------------------
-    # Player
-    # --------------------------------------------------------
 
     draw.text(
         (width // 2, 450),
@@ -199,22 +269,3 @@ def create_blackjack_image(
         x += image.width
 
     return canvas
-
-
-# ============================================================
-# SAVE IMAGE
-# ============================================================
-
-
-def save_image(image, filename):
-
-    os.makedirs("generated", exist_ok=True)
-
-    path = os.path.join(
-        "generated",
-        filename
-    )
-
-    image.save(path)
-
-    return path
